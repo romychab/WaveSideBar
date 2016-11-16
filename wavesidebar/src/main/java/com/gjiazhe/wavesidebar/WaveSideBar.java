@@ -6,6 +6,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RectF;
+import android.os.CountDownTimer;
 import android.util.AttributeSet;
 import android.util.DisplayMetrics;
 import android.util.TypedValue;
@@ -20,8 +21,10 @@ public class WaveSideBar extends View {
     private final static int DEFAULT_TEXT_SIZE = 14; // sp
     private final static int DEFAULT_MAX_OFFSET = 80; //dp
 
-    private final static int DEFAULT_SCROLL_DELAY = 125; //dp
-    private final static int DEFAULT_SCROLL_THRESHOLD = 50; //dp
+    private final static int DEFAULT_SCROLL_DELAY = 125; // ms
+    private final static int DEFAULT_SCROLL_THRESHOLD = 50; // px
+
+    private final static int ANIMATION_PERIOD = 20;
 
     private final static String[] DEFAULT_INDEX_ITEMS = {"A", "B", "C", "D", "E", "F", "G", "H", "I",
             "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"};
@@ -108,9 +111,14 @@ public class WaveSideBar extends View {
     private int mHeight;
     Paint.FontMetrics mFontMetrics;
 
+
     private Paint mCirclePaint;
+    private float mDestY;
+    private float mLastY = -1;
+    private int mVisibility = INVISIBLE;
 
     private int mActiveTextColor = Color.BLUE;
+    private int mCircleColor = Color.WHITE;
 
 
     public WaveSideBar(Context context) {
@@ -149,7 +157,7 @@ public class WaveSideBar extends View {
         mCirclePaint = new Paint();
         mCirclePaint.setStyle(Paint.Style.FILL_AND_STROKE);
         mCirclePaint.setAntiAlias(true);
-        mCirclePaint.setColor(Color.WHITE);
+        mCirclePaint.setColor(mCircleColor);
     }
 
     @Override
@@ -197,6 +205,11 @@ public class WaveSideBar extends View {
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
 
+        // draw
+        if (mLastCurrent >= 0 || mCurrentIndex >= 0) {
+            drawCircle(canvas);
+        }
+
         // draw each item
         for (int i = 0, mIndexItemsLength = mIndexItems.length; i < mIndexItemsLength; i++) {
             float baseLineY = getBaseY() + mIndexItemHeight*i;
@@ -223,6 +236,44 @@ public class WaveSideBar extends View {
                     mPaint);
 
         }
+    }
+
+    @Override
+    protected void onVisibilityChanged(View changedView, int visibility) {
+        super.onVisibilityChanged(changedView, visibility);
+        mVisibility = visibility;
+        if (visibility == VISIBLE) {
+            mTimer.start();
+        }
+        else {
+            mTimer.cancel();
+        }
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        super.onDetachedFromWindow();
+        mVisibility = INVISIBLE;
+        mTimer.cancel();
+    }
+
+    private void updateCircleCoords() {
+        if (Math.abs(mLastY - mDestY) > 1) {
+            mLastY += (mDestY - mLastY) / 10;
+            invalidate();
+        }
+    }
+
+    private void drawCircle(Canvas canvas) {
+        int index = mCurrentIndex >= 0 ? mCurrentIndex : mLastCurrent;
+
+        float baseLineY = getBaseY() + mIndexItemHeight*index;
+        float drawX = (mSideBarPosition == POSITION_LEFT) ?
+                (getPaddingLeft() + mBarWidth/2 ) :
+                (getWidth() - getPaddingRight() - mBarWidth/2);
+        mDestY = baseLineY - mTextSize/2.5f;
+
+        canvas.drawCircle(drawX, mLastY, mTextSize/1.5f, mCirclePaint);
     }
 
     /**
@@ -375,6 +426,15 @@ public class WaveSideBar extends View {
         invalidate();
     }
 
+    public void setCircleColor(int color) {
+        mCircleColor = color;
+        mCirclePaint.setColor(color);
+        invalidate();
+    }
+
+
+
+
     public void setPosition(int position) {
         if (position != POSITION_RIGHT && position != POSITION_LEFT) {
             throw new IllegalArgumentException("the position must be POSITION_RIGHT or POSITION_LEFT");
@@ -418,4 +478,20 @@ public class WaveSideBar extends View {
     public interface OnSelectIndexItemListener {
         void onSelectIndexItem(String index);
     }
+
+    private CountDownTimer mTimer = new CountDownTimer(500, ANIMATION_PERIOD) {
+        @Override
+        public void onTick(long millisUntilFinished) {
+            if (mVisibility == VISIBLE) {
+                updateCircleCoords();
+            }
+        }
+
+        @Override
+        public void onFinish() {
+            if (mVisibility == VISIBLE) {
+                mTimer.start();
+            }
+        }
+    };
 }
