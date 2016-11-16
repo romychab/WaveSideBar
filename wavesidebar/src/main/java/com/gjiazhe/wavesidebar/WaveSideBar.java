@@ -14,12 +14,14 @@ import android.view.View;
 
 import java.util.Arrays;
 
-/**
- * Created by gjz on 8/23/16.
- */
+
 public class WaveSideBar extends View {
+
     private final static int DEFAULT_TEXT_SIZE = 14; // sp
     private final static int DEFAULT_MAX_OFFSET = 80; //dp
+
+    private final static int DEFAULT_SCROLL_DELAY = 125; //dp
+    private final static int DEFAULT_SCROLL_THRESHOLD = 50; //dp
 
     private final static String[] DEFAULT_INDEX_ITEMS = {"A", "B", "C", "D", "E", "F", "G", "H", "I",
             "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"};
@@ -73,7 +75,7 @@ public class WaveSideBar extends View {
     private boolean mStartTouching = false;
 
     /**
-     * if true, the {@link OnSelectIndexItemListener#onSelectIndexItem(String)}
+     * if true, the {@link WaveSideBar.OnSelectIndexItemListener#onSelectIndexItem(String)}
      * will not be called until the finger up.
      * if false, it will be called when the finger down, up and move.
      */
@@ -93,14 +95,22 @@ public class WaveSideBar extends View {
     private OnSelectIndexItemListener onSelectIndexItemListener;
 
     /**
-     * the baseline of the first index item text to draw
-     */
-    private float mFirstItemBaseLineY;
-
-    /**
      * for {@link #dp2px(int)} and {@link #sp2px(int)}
      */
     private DisplayMetrics mDisplayMetrics;
+
+
+    // ---
+    private int mItemShift;
+    private boolean mAutoScrollProcessed = true;
+    private boolean mOverhead = false;
+    private int mLastCurrent = -1;
+    private int mHeight;
+    Paint.FontMetrics mFontMetrics;
+
+    private Paint mCirclePaint;
+
+    private int mActiveTextColor = Color.BLUE;
 
 
     public WaveSideBar(Context context) {
@@ -135,16 +145,23 @@ public class WaveSideBar extends View {
         mPaint.setTextAlign(Paint.Align.CENTER);
         mPaint.setColor(mTextColor);
         mPaint.setTextSize(mTextSize);
+
+        mCirclePaint = new Paint();
+        mCirclePaint.setStyle(Paint.Style.FILL_AND_STROKE);
+        mCirclePaint.setAntiAlias(true);
+        mCirclePaint.setColor(Color.WHITE);
     }
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
 
-        int height = MeasureSpec.getSize(heightMeasureSpec);
-        int width = MeasureSpec.getSize(widthMeasureSpec);
+        int height = View.MeasureSpec.getSize(heightMeasureSpec);
+        mHeight = height;
+        int width = View.MeasureSpec.getSize(widthMeasureSpec);
 
         Paint.FontMetrics fontMetrics = mPaint.getFontMetrics();
+        mFontMetrics = fontMetrics;
         mIndexItemHeight = fontMetrics.bottom - fontMetrics.top;
         mBarHeight = mIndexItems.length * mIndexItemHeight;
 
@@ -164,9 +181,16 @@ public class WaveSideBar extends View {
                 areaBottom);
 
         // the baseline Y of the first item' text to draw
-        mFirstItemBaseLineY = (height/2 - mIndexItems.length*mIndexItemHeight/2)
-                + (mIndexItemHeight/2 - (fontMetrics.descent-fontMetrics.ascent)/2)
-                - fontMetrics.ascent;
+        float totalItemsHeight = mIndexItems.length*mIndexItemHeight;
+
+        if (totalItemsHeight < height) {
+            mOverhead = false;
+        }
+        else {
+            mOverhead = true;
+        }
+
+
     }
 
     @Override
@@ -175,7 +199,7 @@ public class WaveSideBar extends View {
 
         // draw each item
         for (int i = 0, mIndexItemsLength = mIndexItems.length; i < mIndexItemsLength; i++) {
-            float baseLineY = mFirstItemBaseLineY + mIndexItemHeight*i;
+            float baseLineY = getBaseY() + mIndexItemHeight*i;
 
             // calculate the scale factor of the item to draw
             float scale = getScale(i);
@@ -185,16 +209,19 @@ public class WaveSideBar extends View {
 
             mPaint.setTextSize(mTextSize + mTextSize*scale);
 
+            mPaint.setColor(mLastCurrent == i ? mActiveTextColor : mTextColor);
+            mPaint.setFakeBoldText(mLastCurrent == i);
+
             float drawX = (mSideBarPosition == POSITION_LEFT) ?
                     (getPaddingLeft() + mBarWidth/2 + mMaxOffset*scale) :
                     (getWidth() - getPaddingRight() - mBarWidth/2 - mMaxOffset*scale);
 
-            // draw
             canvas.drawText(
                     mIndexItems[i], //item text to draw
                     drawX, //center text X
                     baseLineY, // baseLineY
                     mPaint);
+
         }
     }
 
@@ -207,7 +234,7 @@ public class WaveSideBar extends View {
     private float getScale(int index) {
         float scale = 0;
         if (mCurrentIndex != -1) {
-            float distance = Math.abs(mCurrentY - (mIndexItemHeight*index+mIndexItemHeight/2)) / mIndexItemHeight;
+            float distance = Math.abs(mCurrentY - (mIndexItemHeight*(index+mItemShift)+mIndexItemHeight/2)) / mIndexItemHeight;
             scale = 1 - distance*distance/16;
             scale = Math.max(scale, 0);
 //                Log.i("scale", mIndexItems[index] + ": " + scale);
@@ -241,8 +268,38 @@ public class WaveSideBar extends View {
 
             case MotionEvent.ACTION_MOVE:
                 if (mStartTouching && !mLazyRespond && onSelectIndexItemListener != null) {
+                    mLastCurrent = mCurrentIndex;
                     onSelectIndexItemListener.onSelectIndexItem(mIndexItems[mCurrentIndex]);
                 }
+
+                if (mAutoScrollProcessed) {
+                    float bottom = (mItemShift + mIndexItems.length) * mIndexItemHeight;
+                    boolean done = false;
+                    if (getHeight() - eventY < DEFAULT_SCROLL_THRESHOLD && bottom > getHeight()) {
+                        postDelayed(new Runnable() {
+                            @Override
+                            public void run() {
+                                mItemShift--;
+                                mAutoScrollProcessed = true;
+                            }
+                        }, DEFAULT_SCROLL_DELAY);
+                        done = true;
+                    }
+                    else if (eventY < DEFAULT_SCROLL_THRESHOLD && mItemShift < 0) {
+                        postDelayed(new Runnable() {
+                            @Override
+                            public void run() {
+                                mItemShift++;
+                                mAutoScrollProcessed = true;
+                            }
+                        }, DEFAULT_SCROLL_DELAY);
+                        done = true;
+                    }
+                    if (done) {
+                        mAutoScrollProcessed = false;
+                    }
+                }
+
                 invalidate();
                 return true;
 
@@ -260,15 +317,36 @@ public class WaveSideBar extends View {
         return super.onTouchEvent(event);
     }
 
+    private float getBaseY() {
+        if (mOverhead) {
+            return (mItemShift+1) * mIndexItemHeight;
+        }
+        else {
+            return (mHeight / 2 - mIndexItems.length * mIndexItemHeight / 2)
+                    + (mIndexItemHeight / 2 - (mFontMetrics.descent - mFontMetrics.ascent) / 2)
+                    - mFontMetrics.ascent;
+        }
+    }
+
+
     private int getSelectedIndex(float eventY) {
-        mCurrentY = eventY - (getHeight()/2 - mBarHeight /2);
+        if (!mOverhead) {
+            mCurrentY = eventY - (getHeight() / 2 - mBarHeight / 2);
+        }
+        else {
+            mCurrentY = eventY;
+        }
         if (mCurrentY <= 0) {
             return 0;
         }
 
         int index = (int) (mCurrentY / this.mIndexItemHeight);
+        index -= mItemShift;
         if (index >= this.mIndexItems.length) {
             index = this.mIndexItems.length - 1;
+        }
+        if (index < 0) {
+            index = 0;
         }
         return index;
     }
@@ -292,6 +370,11 @@ public class WaveSideBar extends View {
         invalidate();
     }
 
+    public void setActiveTextColor(int color) {
+        mActiveTextColor = color;
+        invalidate();
+    }
+
     public void setPosition(int position) {
         if (position != POSITION_RIGHT && position != POSITION_LEFT) {
             throw new IllegalArgumentException("the position must be POSITION_RIGHT or POSITION_LEFT");
@@ -308,6 +391,24 @@ public class WaveSideBar extends View {
 
     public void setLazyRespond(boolean lazyRespond) {
         mLazyRespond = lazyRespond;
+    }
+
+    public void setCurrentIndex(int pos) {
+        mLastCurrent = pos;
+        if (mHeight > 0 && mOverhead) {
+            float posY = (pos + mItemShift) * mIndexItemHeight;
+
+            if (posY > mHeight - mIndexItemHeight) {
+                float dif = posY - (mHeight - mIndexItemHeight);
+                dif /= mIndexItemHeight;
+                mItemShift -= (dif + 1);
+            }
+            else if (posY < 0) {
+                mItemShift -= (int)(posY / mIndexItemHeight);
+            }
+
+        }
+        invalidate();
     }
 
     public void setOnSelectIndexItemListener(OnSelectIndexItemListener onSelectIndexItemListener) {
