@@ -20,8 +20,8 @@ public class WaveSideBar extends View {
     private final static int DEFAULT_TEXT_SIZE = 14; // sp
     private final static int DEFAULT_MAX_OFFSET = 80; //dp
 
-    private final static int DEFAULT_SCROLL_DELAY = 125; //dp
-    private final static int DEFAULT_SCROLL_THRESHOLD = 50; //dp
+    private final static int DEFAULT_SCROLL_DELAY = 125; // ms
+    private final static int DEFAULT_SCROLL_THRESHOLD = 50; // px
 
     private final static String[] DEFAULT_INDEX_ITEMS = {"A", "B", "C", "D", "E", "F", "G", "H", "I",
             "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"};
