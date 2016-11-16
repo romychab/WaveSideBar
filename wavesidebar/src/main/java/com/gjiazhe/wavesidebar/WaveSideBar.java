@@ -112,6 +112,7 @@ public class WaveSideBar extends View {
 
     private int mActiveTextColor = Color.BLUE;
 
+    private float mLastEventY;
 
     public WaveSideBar(Context context) {
         this(context, null);
@@ -250,6 +251,7 @@ public class WaveSideBar extends View {
 
         float eventY = event.getY();
         float eventX = event.getX();
+        mLastEventY = eventY;
         mCurrentIndex = getSelectedIndex(eventY);
 
         switch (event.getAction()) {
@@ -268,32 +270,16 @@ public class WaveSideBar extends View {
                 }
 
             case MotionEvent.ACTION_MOVE:
-                if (mStartTouching && !mLazyRespond && onSelectIndexItemListener != null) {
-                    mLastCurrent = mCurrentIndex;
-                    onSelectIndexItemListener.onSelectIndexItem(mIndexItems[mCurrentIndex]);
-                }
+                doNonLazyUpdate();
 
                 if (mAutoScrollProcessed) {
-                    float bottom = (mItemShift + mIndexItems.length) * mIndexItemHeight;
                     boolean done = false;
-                    if (getHeight() - eventY < DEFAULT_SCROLL_THRESHOLD && bottom > getHeight()) {
-                        postDelayed(new Runnable() {
-                            @Override
-                            public void run() {
-                                mItemShift--;
-                                mAutoScrollProcessed = true;
-                            }
-                        }, DEFAULT_SCROLL_DELAY);
+                    if (canDecrement()) {
+                        doScroll(-1);
                         done = true;
                     }
-                    else if (eventY < DEFAULT_SCROLL_THRESHOLD && mItemShift < 0) {
-                        postDelayed(new Runnable() {
-                            @Override
-                            public void run() {
-                                mItemShift++;
-                                mAutoScrollProcessed = true;
-                            }
-                        }, DEFAULT_SCROLL_DELAY);
+                    else if (canIncrement()) {
+                        doScroll(1);
                         done = true;
                     }
                     if (done) {
@@ -310,6 +296,7 @@ public class WaveSideBar extends View {
                     onSelectIndexItemListener.onSelectIndexItem(mIndexItems[mCurrentIndex]);
                 }
                 mCurrentIndex = -1;
+                mAutoScrollProcessed = true;
                 mStartTouching = false;
                 invalidate();
                 return true;
@@ -317,6 +304,48 @@ public class WaveSideBar extends View {
 
         return super.onTouchEvent(event);
     }
+
+    private boolean canDecrement() {
+        float bottom = (mItemShift + mIndexItems.length) * mIndexItemHeight;
+        return getHeight() - mLastEventY < DEFAULT_SCROLL_THRESHOLD && bottom > getHeight();
+    }
+
+    private boolean canIncrement() {
+        return mLastEventY < DEFAULT_SCROLL_THRESHOLD && mItemShift < 0;
+    }
+
+    private boolean canScroll(int shift) {
+        if (shift > 0) return canIncrement();
+        if (shift < 0) return canDecrement();
+        return false;
+    }
+
+    private void doNonLazyUpdate() {
+        if (mStartTouching && !mLazyRespond && onSelectIndexItemListener != null) {
+            mLastCurrent = mCurrentIndex;
+            onSelectIndexItemListener.onSelectIndexItem(mIndexItems[mCurrentIndex]);
+        }
+    }
+
+    private void doScroll(final int shift) {
+        postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                mItemShift += shift;
+                doNonLazyUpdate();
+                if (canScroll(shift) && !mAutoScrollProcessed) {
+                    doScroll(shift);
+                    mCurrentIndex = getSelectedIndex(mLastEventY);
+                }
+                else {
+                    mAutoScrollProcessed = true;
+                    mCurrentIndex = -1;
+                }
+                invalidate();
+            }
+        }, DEFAULT_SCROLL_DELAY);
+    }
+
 
     private float getBaseY() {
         if (mOverhead) {
