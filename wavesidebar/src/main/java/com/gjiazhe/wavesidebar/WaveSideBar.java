@@ -257,6 +257,7 @@ public class WaveSideBar extends View {
                 if (mStartTouchingArea.contains(eventX, eventY)) {
                     mStartTouching = true;
                     if (!mLazyRespond && onSelectIndexItemListener != null) {
+                        mLastCurrent = mCurrentIndex;
                         onSelectIndexItemListener.onSelectIndexItem(mIndexItems[mCurrentIndex]);
                     }
                     invalidate();
